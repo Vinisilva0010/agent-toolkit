@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import os
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
+
+# Força carregar explicitamente o arquivo .env encontrado
+load_dotenv(find_dotenv(usecwd=True))
+
 from langchain_core.messages import BaseMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.memory import InMemorySaver
@@ -15,8 +19,6 @@ from triagem_atendimento.tools.atendimento import (
     verificar_politica_reembolso,
 )
 
-load_dotenv()
-
 TOOLS = [
     consultar_status_pedido,
     verificar_politica_reembolso,
@@ -26,8 +28,11 @@ TOOLS = [
 
 def _call_model(state: TriagemState) -> dict[str, list[BaseMessage]]:
     api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("GOOGLE_API_KEY não foi encontrada nas variáveis de ambiente.")
+
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
+        model="gemini-3.6-flash",
         api_key=api_key,
     ).bind_tools(TOOLS)
     response = llm.invoke(state["messages"])

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
@@ -29,15 +30,23 @@ def main() -> None:
                     interrupt_info = result["__interrupt__"][0].value
                     motivo = interrupt_info.get("motivo", "Sem motivo especificado")
 
-                    print(f"\n[INTERRUPÇÃO DE SEGURANÇA / ESCALAÇÃO DETECTADA]")
+                    print("\n[INTERRUPÇÃO DE SEGURANÇA / ESCALAÇÃO DETECTADA]")
                     print(f"Motivo informado pelo agente: {motivo}")
 
-                    escolha = input("Deseja aprovar a escalação para atendente humano? (s/n): ").strip().lower()
+                    escolha = (
+                        input(
+                            "Deseja aprovar a escalação para atendente humano? (s/n): "
+                        )
+                        .strip()
+                        .lower()
+                    )
                     aprovado = escolha == "s"
 
                     observacao = None
                     if not aprovado:
-                        obs_input = input("Instrução adicional para o agente (opcional, Enter para pular): ").strip()
+                        obs_input = input(
+                            "Instrução adicional para o agente (opcional, Enter para pular): "
+                        ).strip()
                         observacao = obs_input if obs_input else None
 
                     # Prepara o Command de retomada para a próxima iteração do ciclo
@@ -57,7 +66,9 @@ def main() -> None:
                     if isinstance(content, list):
                         # Extrai os blocos de texto caso venha como lista de dicts
                         texto = "".join(
-                            bloco["text"] for bloco in content if isinstance(bloco, dict) and "text" in bloco
+                            bloco["text"]
+                            for bloco in content
+                            if isinstance(bloco, dict) and "text" in bloco
                         )
                         print(f"\nAgente: {texto}")
                     else:

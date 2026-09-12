@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+
 from langchain_core.tools import tool
 from langgraph.types import interrupt
 
@@ -54,10 +55,12 @@ def verificar_politica_reembolso(categoria_produto: str) -> str:
 @tool
 def escalar_para_humano(motivo: str) -> str:
     """Aciona a escalação do atendimento para um operador humano quando o agente não consegue resolver a solicitação."""
-    resposta_humano = interrupt({
-        "acao": "escalar_para_humano",
-        "motivo": motivo,
-    })
+    resposta_humano = interrupt(
+        {
+            "acao": "escalar_para_humano",
+            "motivo": motivo,
+        }
+    )
 
     if not isinstance(resposta_humano, dict):
         raise TypeError("A resposta da intervenção humana deve ser um dicionário.")

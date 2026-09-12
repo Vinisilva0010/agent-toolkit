@@ -24,7 +24,9 @@ def test_consultar_status_pedido_inexistente():
 
 
 def test_verificar_politica_reembolso_sucesso():
-    resultado = verificar_politica_reembolso.invoke({"categoria_produto": "eletronicos"})
+    resultado = verificar_politica_reembolso.invoke(
+        {"categoria_produto": "eletronicos"}
+    )
     assert isinstance(resultado, str)
     assert "7 dias corridos" in resultado
 
@@ -32,7 +34,10 @@ def test_verificar_politica_reembolso_sucesso():
 def test_verificar_politica_reembolso_categoria_invalida():
     resultado = verificar_politica_reembolso.invoke({"categoria_produto": "automotivo"})
     assert isinstance(resultado, str)
-    assert "Política de reembolso não encontrada para a categoria 'automotivo'" in resultado
+    assert (
+        "Política de reembolso não encontrada para a categoria 'automotivo'"
+        in resultado
+    )
 
 
 def test_escalar_para_humano_declaracao():

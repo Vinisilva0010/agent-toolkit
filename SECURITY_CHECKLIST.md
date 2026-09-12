@@ -54,3 +54,33 @@ First filled out for triagem-atendimento (Python + MCP).
 - Least privilege per tool: each tool only accesses the minimum scope of
   data required for its specific function, never a generic "account-wide"
   access.
+
+## Automated red-teaming (Promptfoo)
+
+Location: `templates/triagem-atendimento/promptfooconfig.yaml` and
+`tests/red_team/provider.py`. Runs against the real agent (Gemini free tier),
+zero cost, 4 requests per run.
+
+Covers: role/instruction override (jailbreak), secret/API key exfiltration,
+escalation abuse without a genuine reason, and destructive out-of-scope code
+generation. All 4 currently pass with deterministic assertions (regex /
+substring checks) — no paid judge API required.
+
+Known limitation: whether an escalation reason is "honest" (matches what the
+customer actually needs) is a semantic judgment that isn't fully
+automatable without an LLM-as-judge, which typically requires a paid API.
+For now this is checked as part of manual review before shipping a new
+template to a client, not by the automated suite.
+
+## Checklist applied to every new template in this toolkit
+
+1. List every tool and classify it as read-only or has-side-effects.
+2. For side-effect tools, confirm least-privilege scope and that any
+   irreversible action requires human approval via interrupt().
+3. Never hardcode credentials; confirm .env is gitignored and secrets use
+   the provider's secret manager in production.
+4. Run the Promptfoo red-team suite (jailbreak, secret exfiltration,
+   scope-abuse, destructive actions) with zero-cost deterministic
+   assertions before considering a template client-ready.
+5. Manually review any escalation/approval reason logic for honesty, since
+   this is not reliably automatable without a paid judge model.

@@ -3,9 +3,9 @@ from __future__ import annotations
 import os
 from dotenv import find_dotenv, load_dotenv
 
-# Força carregar explicitamente o arquivo .env encontrado
 load_dotenv(find_dotenv(usecwd=True))
 
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.memory import InMemorySaver
@@ -26,19 +26,6 @@ TOOLS = [
 ]
 
 
-def _call_model(state: TriagemState) -> dict[str, list[BaseMessage]]:
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise ValueError("GOOGLE_API_KEY não foi encontrada nas variáveis de ambiente.")
-
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-3.6-flash",
-        api_key=api_key,
-    ).bind_tools(TOOLS)
-    response = llm.invoke(state["messages"])
-    return {"messages": [response]}
-
-
 def _route_model_output(state: TriagemState) -> str:
     messages = state["messages"]
     last_message = messages[-1]
@@ -47,7 +34,22 @@ def _route_model_output(state: TriagemState) -> str:
     return END
 
 
-def build_graph():
+def build_graph(model: BaseChatModel | None = None):
+    if model is None:
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY não foi encontrada nas variáveis de ambiente.")
+        model = ChatGoogleGenerativeAI(
+            model="gemini-3.6-flash",
+            api_key=api_key,
+        )
+
+    model_with_tools = model.bind_tools(TOOLS)
+
+    def _call_model(state: TriagemState) -> dict[str, list[BaseMessage]]:
+        response = model_with_tools.invoke(state["messages"])
+        return {"messages": [response]}
+
     workflow = StateGraph(TriagemState)
 
     workflow.add_node("agent", _call_model)

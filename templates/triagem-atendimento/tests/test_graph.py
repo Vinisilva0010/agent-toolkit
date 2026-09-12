@@ -3,11 +3,19 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import BaseTool
 
 from triagem_atendimento.graph import build_graph
+from triagem_atendimento.tools.atendimento import (
+    consultar_status_pedido,
+    escalar_para_humano,
+    verificar_politica_reembolso,
+)
+
+TOOLS = [consultar_status_pedido, verificar_politica_reembolso, escalar_para_humano]
 
 
 class FakeToolCallingModel(GenericFakeChatModel):
@@ -21,14 +29,15 @@ class FakeToolCallingModel(GenericFakeChatModel):
         return self
 
 
-def test_roteamento_direto_para_end_sem_tool_calls():
+@pytest.mark.asyncio
+async def test_roteamento_direto_para_end_sem_tool_calls():
     fake_model = FakeToolCallingModel(
         messages=iter([AIMessage(content="Atendimento concluído com sucesso.")])
     )
-    graph = build_graph(model=fake_model)
+    graph = await build_graph(model=fake_model, tools=TOOLS)
     config = {"configurable": {"thread_id": "test-route-end"}}
 
-    resultado = graph.invoke(
+    resultado = await graph.ainvoke(
         {"messages": [HumanMessage(content="Olá, obrigado.")]},
         config=config,
     )
@@ -40,7 +49,8 @@ def test_roteamento_direto_para_end_sem_tool_calls():
     assert not getattr(mensagens[-1], "tool_calls", None)
 
 
-def test_roteamento_para_tools_e_retorno_ao_agente():
+@pytest.mark.asyncio
+async def test_roteamento_para_tools_e_retorno_ao_agente():
     chamada_tool = {
         "name": "consultar_status_pedido",
         "args": {"pedido_id": "PED-123"},
@@ -51,10 +61,10 @@ def test_roteamento_para_tools_e_retorno_ao_agente():
     msg_final = AIMessage(content="Seu pedido foi enviado com sucesso.")
 
     fake_model = FakeToolCallingModel(messages=iter([msg_com_tool, msg_final]))
-    graph = build_graph(model=fake_model)
+    graph = await build_graph(model=fake_model, tools=TOOLS)
     config = {"configurable": {"thread_id": "test-route-tools"}}
 
-    resultado = graph.invoke(
+    resultado = await graph.ainvoke(
         {"messages": [HumanMessage(content="Qual o status do meu pedido PED-123?")]},
         config=config,
     )

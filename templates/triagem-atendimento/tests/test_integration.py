@@ -11,6 +11,13 @@ from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
 
 from triagem_atendimento.graph import build_graph
+from triagem_atendimento.tools.atendimento import (
+    consultar_status_pedido,
+    escalar_para_humano,
+    verificar_politica_reembolso,
+)
+
+TOOLS = [consultar_status_pedido, verificar_politica_reembolso, escalar_para_humano]
 
 
 class FakeToolCallingModel(GenericFakeChatModel):
@@ -24,7 +31,8 @@ class FakeToolCallingModel(GenericFakeChatModel):
         return self
 
 
-def test_fluxo_feliz_consulta_pedido():
+@pytest.mark.asyncio
+async def test_fluxo_feliz_consulta_pedido():
     tool_call = {
         "name": "consultar_status_pedido",
         "args": {"pedido_id": "PED-123"},
@@ -35,10 +43,10 @@ def test_fluxo_feliz_consulta_pedido():
     msg_final = AIMessage(content="O status do pedido PED-123 é enviado.")
 
     fake_model = FakeToolCallingModel(messages=iter([msg_tool, msg_final]))
-    graph = build_graph(model=fake_model)
+    graph = await build_graph(model=fake_model, tools=TOOLS)
     config = {"configurable": {"thread_id": "it-happy-path"}}
 
-    resultado = graph.invoke(
+    resultado = await graph.ainvoke(
         {"messages": [HumanMessage(content="Qual o status do pedido PED-123?")]},
         config=config,
     )
@@ -50,8 +58,8 @@ def test_fluxo_feliz_consulta_pedido():
     assert mensagens[3].content == "O status do pedido PED-123 é enviado."
 
 
-def test_ferramenta_erro_recuperavel():
-    # Ao falhar com ValueError na tool, o ToolNode devolve mensagem de erro sem abortar o grafo
+@pytest.mark.asyncio
+async def test_ferramenta_erro_recuperavel():
     tool_call = {
         "name": "consultar_status_pedido",
         "args": {"pedido_id": "PED-INEXISTENTE"},
@@ -64,10 +72,10 @@ def test_ferramenta_erro_recuperavel():
     )
 
     fake_model = FakeToolCallingModel(messages=iter([msg_tool, msg_final]))
-    graph = build_graph(model=fake_model)
+    graph = await build_graph(model=fake_model, tools=TOOLS)
     config = {"configurable": {"thread_id": "it-tool-error"}}
 
-    resultado = graph.invoke(
+    resultado = await graph.ainvoke(
         {"messages": [HumanMessage(content="Status do pedido PED-INEXISTENTE?")]},
         config=config,
     )
@@ -84,13 +92,13 @@ def test_ferramenta_erro_recuperavel():
     )
 
 
-def test_resposta_ambigua_modelo():
-    # Modelo retorna mensagem vazia e sem chamadas de ferramenta
+@pytest.mark.asyncio
+async def test_resposta_ambigua_modelo():
     fake_model = FakeToolCallingModel(messages=iter([AIMessage(content="")]))
-    graph = build_graph(model=fake_model)
+    graph = await build_graph(model=fake_model, tools=TOOLS)
     config = {"configurable": {"thread_id": "it-ambiguous-response"}}
 
-    resultado = graph.invoke(
+    resultado = await graph.ainvoke(
         {"messages": [HumanMessage(content="Oi")]},
         config=config,
     )
@@ -100,7 +108,8 @@ def test_resposta_ambigua_modelo():
     assert mensagens[-1].content == ""
 
 
-def test_escalacao_aprovada():
+@pytest.mark.asyncio
+async def test_escalacao_aprovada():
     tool_call = {
         "name": "escalar_para_humano",
         "args": {"motivo": "Cliente agressivo"},
@@ -111,34 +120,34 @@ def test_escalacao_aprovada():
     msg_final = AIMessage(content="Transferência para atendente humano realizada.")
 
     fake_model = FakeToolCallingModel(messages=iter([msg_tool, msg_final]))
-    graph = build_graph(model=fake_model)
+    graph = await build_graph(model=fake_model, tools=TOOLS)
     config = {"configurable": {"thread_id": "it-escalate-approved"}}
 
-    # Inicia execução até pausar no interrupt()
-    resultado_pausa = graph.invoke(
+    resultado_pausa = await graph.ainvoke(
         {"messages": [HumanMessage(content="Quero falar com um humano agora!")]},
         config=config,
     )
 
     assert "__interrupt__" in resultado_pausa
     interrupt_info = resultado_pausa["__interrupt__"][0].value
-    assert interrupt_info["acao"] == "escalar_para_humano"
-    assert interrupt_info["motivo"] == "Cliente agressivo"
+    assert interrupt_info["acao"] == "aprovar_escalacao"
+    assert interrupt_info["ticket_id"] is not None
+    assert "Cliente agressivo" in interrupt_info["detalhes"]
 
-    # Retoma com aprovação humana
-    resultado_final = graph.invoke(
+    resultado_final = await graph.ainvoke(
         Command(resume={"aprovado": True, "observacao": "Operador assumindo"}),
         config=config,
     )
 
     mensagens = resultado_final["messages"]
-    tool_msg = next(m for m in mensagens if isinstance(m, ToolMessage))
-    assert "Escalação aprovada pelo operador" in tool_msg.content
-    assert "Operador assumindo" in tool_msg.content
+    aprovacao_msg = mensagens[-2]
+    assert "Escalação aprovada pelo operador" in aprovacao_msg.content
+    assert "Operador assumindo" in aprovacao_msg.content
     assert mensagens[-1].content == "Transferência para atendente humano realizada."
 
 
-def test_escalacao_recusada():
+@pytest.mark.asyncio
+async def test_escalacao_recusada():
     tool_call = {
         "name": "escalar_para_humano",
         "args": {"motivo": "Dúvida simples de política"},
@@ -149,18 +158,16 @@ def test_escalacao_recusada():
     msg_final = AIMessage(content="Entendido, vou continuar tentando tirar sua dúvida.")
 
     fake_model = FakeToolCallingModel(messages=iter([msg_tool, msg_final]))
-    graph = build_graph(model=fake_model)
+    graph = await build_graph(model=fake_model, tools=TOOLS)
     config = {"configurable": {"thread_id": "it-escalate-rejected"}}
 
-    # Pausa no interrupt
-    resultado_pausa = graph.invoke(
+    resultado_pausa = await graph.ainvoke(
         {"messages": [HumanMessage(content="Me passa alguém")]},
         config=config,
     )
     assert "__interrupt__" in resultado_pausa
 
-    # Retoma com recusa humana
-    resultado_final = graph.invoke(
+    resultado_final = await graph.ainvoke(
         Command(
             resume={
                 "aprovado": False,
@@ -171,17 +178,16 @@ def test_escalacao_recusada():
     )
 
     mensagens = resultado_final["messages"]
-    tool_msg = next(m for m in mensagens if isinstance(m, ToolMessage))
-    assert "Escalação recusada pelo operador" in tool_msg.content
-    assert "Tente responder sobre reembolso primeiro" in tool_msg.content
-    assert resultado_final.get("status") != "escalated"
+    recusa_msg = mensagens[-2]
+    assert "Escalação recusada pelo operador" in recusa_msg.content
+    assert "Tente responder sobre reembolso primeiro" in recusa_msg.content
     assert (
         mensagens[-1].content == "Entendido, vou continuar tentando tirar sua dúvida."
     )
 
 
-def test_timeout_recursion_limit():
-    # Modelo insiste em chamar a mesma tool indefinidamente simulando loop
+@pytest.mark.asyncio
+async def test_timeout_recursion_limit():
     def gerar_loop_infinito():
         while True:
             yield AIMessage(
@@ -197,11 +203,11 @@ def test_timeout_recursion_limit():
             )
 
     fake_model = FakeToolCallingModel(messages=gerar_loop_infinito())
-    graph = build_graph(model=fake_model)
+    graph = await build_graph(model=fake_model, tools=TOOLS)
     config = {"configurable": {"thread_id": "it-timeout-loop"}, "recursion_limit": 4}
 
     with pytest.raises(GraphRecursionError):
-        graph.invoke(
+        await graph.ainvoke(
             {"messages": [HumanMessage(content="Loop infinito")]},
             config=config,
         )

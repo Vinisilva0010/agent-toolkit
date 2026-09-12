@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 
 from langchain_core.messages import HumanMessage
@@ -8,77 +9,47 @@ from langgraph.types import Command
 from triagem_atendimento.graph import build_graph
 
 
-def main() -> None:
-    graph = build_graph()
+async def main() -> None:
+    graph = await build_graph()
     config = {"configurable": {"thread_id": "cli-session"}}
 
-    print("=== Atendimento Automático Iniciado (Ctrl+C para encerrar) ===\n")
+    print("Agente de triagem de atendimento. Digite sua mensagem (Ctrl+C para sair).\n")
 
-    while True:
-        try:
-            user_input = input("\nCliente: ").strip()
+    try:
+        while True:
+            user_input = input("Você: ").strip()
             if not user_input:
                 continue
 
-            current_input = {"messages": [HumanMessage(content=user_input)]}
+            result = await graph.ainvoke(
+                {"messages": [HumanMessage(content=user_input)]}, config
+            )
 
-            while True:
-                result = graph.invoke(current_input, config=config)
+            while "__interrupt__" in result:
+                interrupt_info = result["__interrupt__"][0].value
+                ticket_id = interrupt_info.get("ticket_id", "desconhecido")
+                detalhes = interrupt_info.get("detalhes", "Sem detalhes.")
 
-                # Verifica se a execução pausou por interrupt do HITL
-                if "__interrupt__" in result:
-                    interrupt_info = result["__interrupt__"][0].value
-                    motivo = interrupt_info.get("motivo", "Sem motivo especificado")
+                print("\n[APROVAÇÃO HUMANA NECESSÁRIA]")
+                print(f"Ticket: {ticket_id}")
+                print(f"Detalhes: {detalhes}")
+                resposta = input("Aprovar escalação? (s/n): ").strip().lower()
+                observacao = input("Observação (opcional): ").strip() or None
 
-                    print("\n[INTERRUPÇÃO DE SEGURANÇA / ESCALAÇÃO DETECTADA]")
-                    print(f"Motivo informado pelo agente: {motivo}")
+                result = await graph.ainvoke(
+                    Command(
+                        resume={"aprovado": resposta == "s", "observacao": observacao}
+                    ),
+                    config,
+                )
 
-                    escolha = (
-                        input(
-                            "Deseja aprovar a escalação para atendente humano? (s/n): "
-                        )
-                        .strip()
-                        .lower()
-                    )
-                    aprovado = escolha == "s"
+            resposta_final = result["messages"][-1].content
+            print(f"\nAgente: {resposta_final}\n")
 
-                    observacao = None
-                    if not aprovado:
-                        obs_input = input(
-                            "Instrução adicional para o agente (opcional, Enter para pular): "
-                        ).strip()
-                        observacao = obs_input if obs_input else None
-
-                    # Prepara o Command de retomada para a próxima iteração do ciclo
-                    current_input = Command(
-                        resume={
-                            "aprovado": aprovado,
-                            "observacao": observacao,
-                        }
-                    )
-                    continue
-
-                # Sem interrupções pendentes: exibe a mensagem final do agente
-                messages = result.get("messages", [])
-                if messages:
-                    last_message = messages[-1]
-                    content = last_message.content
-                    if isinstance(content, list):
-                        # Extrai os blocos de texto caso venha como lista de dicts
-                        texto = "".join(
-                            bloco["text"]
-                            for bloco in content
-                            if isinstance(bloco, dict) and "text" in bloco
-                        )
-                        print(f"\nAgente: {texto}")
-                    else:
-                        print(f"\nAgente: {content}")
-                break
-
-        except KeyboardInterrupt:
-            print("\nEncerrando atendimento...")
-            sys.exit(0)
+    except KeyboardInterrupt:
+        print("\nAtendimento encerrado.")
+        sys.exit(0)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

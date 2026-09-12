@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from langchain_core.tools import tool
-from langgraph.types import interrupt
 
 MOCK_PEDIDOS: dict[str, dict[str, Any]] = {
     "PED-123": {
@@ -54,28 +54,12 @@ def verificar_politica_reembolso(categoria_produto: str) -> str:
 
 @tool
 def escalar_para_humano(motivo: str) -> str:
-    """Aciona a escalação do atendimento para um operador humano quando o agente não consegue resolver a solicitação."""
-    resposta_humano = interrupt(
-        {
-            "acao": "escalar_para_humano",
-            "motivo": motivo,
-        }
-    )
+    """Aciona a escalação do atendimento para um operador humano quando o agente não consegue resolver a solicitação.
 
-    if not isinstance(resposta_humano, dict):
-        raise TypeError("A resposta da intervenção humana deve ser um dicionário.")
-
-    aprovado = resposta_humano.get("aprovado", False)
-    observacao = resposta_humano.get("observacao")
-
-    if aprovado:
-        msg = f"Escalação aprovada pelo operador. Motivo: {motivo}."
-        if observacao:
-            msg += f" Observação: {observacao}"
-        return msg
-
-    msg = f"Escalação recusada pelo operador. Motivo informado: {motivo}."
-    if observacao:
-        msg += f" Instrução do operador: {observacao}."
-    msg += " Continue o atendimento tentando resolver o problema diretamente com o cliente."
-    return msg
+    Nota de arquitetura: esta versão local só registra o pedido de escalação
+    e retorna, imitando o contrato da versão MCP (Fase 2) — ela NÃO pausa a
+    execução sozinha. Quem pausa esperando aprovação humana é o nó
+    `aguardar_aprovacao_humana` do grafo, depois que esta tool retorna.
+    """
+    ticket_id = str(uuid.uuid4())
+    return f"Escalação registrada. ticket_id: {ticket_id}. Motivo: {motivo}. Aguardando aprovação humana."

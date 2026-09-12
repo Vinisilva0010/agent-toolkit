@@ -2,15 +2,22 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
 
-const PEDIDOS_MOCK: Record<string, { status: string; previsao_entrega: string }> = {
-	"123": { status: "enviado", previsao_entrega: "2026-09-15" },
-	"456": { status: "em processamento", previsao_entrega: "2026-09-20" },
-	"789": { status: "entregue", previsao_entrega: "2026-09-05" },
+const PEDIDOS_MOCK: Record
+	string,
+	{ status: string; codigo_rastreio: string | null; previsao_entrega: string }
+> = {
+	"PED-123": { status: "enviado", codigo_rastreio: "BR123456789", previsao_entrega: "2026-09-20" },
+	"PED-456": { status: "processando", codigo_rastreio: null, previsao_entrega: "2026-09-25" },
+	"PED-789": { status: "entregue", codigo_rastreio: "BR987654321", previsao_entrega: "2026-09-10" },
 };
 
 const POLITICAS_MOCK: Record<string, string> = {
-	eletronicos: "Reembolso integral em até 7 dias corridos após a entrega, produto sem sinais de uso.",
-	roupas: "Troca ou reembolso em até 30 dias corridos, com etiqueta original.",
+	eletronicos:
+		"Reembolso integral permitido em até 7 dias corridos após o recebimento, desde que o produto esteja na embalagem original sem avarias.",
+	vestuario:
+		"Troca ou reembolso garantidos em até 30 dias após o recebimento. Peças devem conter etiqueta intacta e sem sinais de uso.",
+	alimentos:
+		"Reembolso aplicável apenas em caso de avaria, produto vencido ou item incorreto reportado em até 24 horas após o recebimento.",
 };
 
 function createServer(env: Env) {
@@ -23,18 +30,21 @@ function createServer(env: Env) {
 		"consultar_status_pedido",
 		{ inputSchema: z.object({ pedido_id: z.string() }) },
 		async ({ pedido_id }) => {
-			const pedido = PEDIDOS_MOCK[pedido_id];
+			const pedido = PEDIDOS_MOCK[pedido_id.trim()];
 			if (!pedido) {
 				return {
-					content: [{ type: "text", text: `Pedido '${pedido_id}' não encontrado.` }],
+					content: [{ type: "text", text: `Pedido '${pedido_id}' não encontrado no sistema.` }],
 					isError: true,
 				};
 			}
+			const rastreio = pedido.codigo_rastreio
+				? ` Código de rastreio: ${pedido.codigo_rastreio}.`
+				: "";
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Status: ${pedido.status}. Previsão de entrega: ${pedido.previsao_entrega}.`,
+						text: `Status: ${pedido.status}.${rastreio} Previsão de entrega: ${pedido.previsao_entrega}.`,
 					},
 				],
 			};
@@ -45,10 +55,10 @@ function createServer(env: Env) {
 		"verificar_politica_reembolso",
 		{ inputSchema: z.object({ categoria_produto: z.string() }) },
 		async ({ categoria_produto }) => {
-			const politica = POLITICAS_MOCK[categoria_produto.toLowerCase()];
+			const politica = POLITICAS_MOCK[categoria_produto.trim().toLowerCase()];
 			const texto =
 				politica ??
-				`Política de reembolso não encontrada para a categoria '${categoria_produto}'.`;
+				`Política de reembolso não encontrada para a categoria '${categoria_produto}'. Consulte as condições gerais de suporte.`;
 			return { content: [{ type: "text", text: texto }] };
 		},
 	);
@@ -70,7 +80,7 @@ function createServer(env: Env) {
 				content: [
 					{
 						type: "text",
-						text: `Escalação registrada. ticket_id: ${ticketId}. Aguardando aprovação humana.`,
+						text: `Escalação registrada. ticket_id: ${ticketId}. Motivo: ${motivo}. Aguardando aprovação humana.`,
 					},
 				],
 			};

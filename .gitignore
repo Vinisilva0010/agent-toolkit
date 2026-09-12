@@ -1,18 +1,11 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
+# Personal scratch files (not part of the portfolio)
+teste.md
+
+# Node (TypeScript templates, ex: MCP server da Fase 2)
+node_modules/
+.wrangler/
 dist/
-wheels/
-*.egg-info
 
-# Virtual environments
-.venv
-
-# Environment variables (API keys)
-.env
-.env.local
-
-# Test & lint caches
-.pytest_cache/
-.ruff_cache/
+# Python
+.venv/
+__pycache__/

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+
 from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv(usecwd=True))
@@ -38,7 +39,9 @@ def build_graph(model: BaseChatModel | None = None):
     if model is None:
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
-            raise ValueError("GOOGLE_API_KEY não foi encontrada nas variáveis de ambiente.")
+            raise ValueError(
+                "GOOGLE_API_KEY não foi encontrada nas variáveis de ambiente."
+            )
         model = ChatGoogleGenerativeAI(
             model="gemini-3.6-flash",
             api_key=api_key,
@@ -53,7 +56,7 @@ def build_graph(model: BaseChatModel | None = None):
     workflow = StateGraph(TriagemState)
 
     workflow.add_node("agent", _call_model)
-    workflow.add_node("tools", ToolNode(TOOLS))
+    workflow.add_node("tools", ToolNode(TOOLS, handle_tool_errors=True))
 
     workflow.add_edge(START, "agent")
     workflow.add_conditional_edges(
